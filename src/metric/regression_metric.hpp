@@ -5,6 +5,7 @@
 #ifndef LIGHTGBM_METRIC_REGRESSION_METRIC_HPP_
 #define LIGHTGBM_METRIC_REGRESSION_METRIC_HPP_
 
+#include <LightGBM/network.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/log.h>
 
@@ -50,6 +51,9 @@ class RegressionMetric: public Metric {
         sum_weights_ += weights_[i];
       }
     }
+    if (Network::num_machines() > 1) {
+      sum_weights_ = Network::GlobalSyncUpBySum(sum_weights_);
+    }
     for (data_size_t i = 0; i < num_data_; ++i) {
       PointWiseLossCalculator::CheckLabel(label_[i]);
     }
@@ -89,6 +93,9 @@ class RegressionMetric: public Metric {
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], t, config_) * weights_[i];
         }
       }
+    }
+    if (Network::num_machines() > 1) {
+      sum_loss = Network::GlobalSyncUpBySum(sum_loss);
     }
     double loss = PointWiseLossCalculator::AverageLoss(sum_loss, sum_weights_);
     return std::vector<double>(1, loss);

@@ -224,14 +224,10 @@ std::string Tree::ToString() const {
     << Common::ArrayToStringFast(right_child_, num_leaves_ - 1) << '\n';
   str_buf << "leaf_value="
     << Common::ArrayToString(leaf_value_, num_leaves_) << '\n';
-  str_buf << "leaf_weight="
-    << Common::ArrayToString(leaf_weight_, num_leaves_) << '\n';
   str_buf << "leaf_count="
     << Common::ArrayToStringFast(leaf_count_, num_leaves_) << '\n';
   str_buf << "internal_value="
     << Common::ArrayToStringFast(internal_value_, num_leaves_ - 1) << '\n';
-  str_buf << "internal_weight="
-    << Common::ArrayToStringFast(internal_weight_, num_leaves_ - 1) << '\n';
   str_buf << "internal_count="
     << Common::ArrayToStringFast(internal_count_, num_leaves_ - 1) << '\n';
   if (num_cat_ > 0) {
@@ -241,6 +237,10 @@ std::string Tree::ToString() const {
       << Common::ArrayToStringFast(cat_threshold_, cat_threshold_.size()) << '\n';
   }
   str_buf << "shrinkage=" << shrinkage_ << '\n';
+  str_buf << "leaf_weight="
+          << Common::ArrayToString(leaf_weight_, num_leaves_) << '\n';
+  str_buf << "internal_weight="
+          << Common::ArrayToStringFast(internal_weight_, num_leaves_ - 1) << '\n';
   str_buf << '\n';
   return str_buf.str();
 }

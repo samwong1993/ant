@@ -5,6 +5,7 @@
 #ifndef LIGHTGBM_METRIC_BINARY_METRIC_HPP_
 #define LIGHTGBM_METRIC_BINARY_METRIC_HPP_
 
+#include <LightGBM/network.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/common.h>
 #include <LightGBM/utils/log.h>
@@ -46,6 +47,10 @@ class BinaryMetric: public Metric {
       for (data_size_t i = 0; i < num_data; ++i) {
         sum_weights_ += weights_[i];
       }
+    }
+
+    if (Network::num_machines() > 1) {
+      sum_weights_ = Network::GlobalSyncUpBySum(sum_weights_);
     }
   }
 
@@ -91,6 +96,9 @@ class BinaryMetric: public Metric {
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], prob) * weights_[i];
         }
       }
+    }
+    if (Network::num_machines() > 1) {
+      sum_loss = Network::GlobalSyncUpBySum(sum_loss);
     }
     double loss = sum_loss / sum_weights_;
     return std::vector<double>(1, loss);
@@ -247,6 +255,14 @@ class AUCMetric: public Metric {
     if (sum_pos > 0.0f && sum_pos != sum_weights_) {
       auc = accum / (sum_pos *(sum_weights_ - sum_pos));
     }
+
+    if (Network::num_machines() > 1) {
+      double weight_auc = auc * sum_weights_;
+      weight_auc = Network::GlobalSyncUpBySum(weight_auc);
+      double global_sum_weights = Network::GlobalSyncUpBySum(sum_weights_);
+      auc = weight_auc / global_sum_weights;
+    }
+
     return std::vector<double>(1, auc);
   }
 

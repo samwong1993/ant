@@ -1602,6 +1602,39 @@ int LGBM_NetworkInitWithFunctions(int num_machines, int rank,
   API_END();
 }
 
+int LGBM_NetworkGlobalSyncUpBySum(double value,
+                                  double* out) {
+  API_BEGIN();
+  if (Network::num_machines() > 1) {
+    *out = Network::GlobalSyncUpBySum(value);
+  } else {
+    *out = value;
+  }
+  API_END();
+}
+
+int LGBM_NetworkGlobalSyncUpByMax(double value,
+                                  double* out) {
+  API_BEGIN();
+  if (Network::num_machines() > 1) {
+    *out = Network::GlobalSyncUpByMax(value);
+  } else {
+    *out = value;
+  }
+  API_END();
+}
+
+int LGBM_NetworkGlobalSyncUpByMin(double value,
+                                  double* out) {
+  API_BEGIN();
+  if (Network::num_machines() > 1) {
+    *out = Network::GlobalSyncUpByMin(value);
+  } else {
+    *out = value;
+  }
+  API_END();
+}
+
 // ---- start of some help functions
 
 std::function<std::vector<double>(int row_idx)>

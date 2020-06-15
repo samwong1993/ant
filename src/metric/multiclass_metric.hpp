@@ -42,6 +42,9 @@ class MulticlassMetric: public Metric {
         sum_weights_ += weights_[i];
       }
     }
+    if (Network::num_machines() > 1) {
+      sum_weights_ = Network::GlobalSyncUpBySum(sum_weights_);
+    }
   }
 
   const std::vector<std::string>& GetName() const override {
@@ -112,6 +115,9 @@ class MulticlassMetric: public Metric {
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], &rec, config_) * weights_[i];
         }
       }
+    }
+    if (Network::num_machines() > 1) {
+      sum_loss = Network::GlobalSyncUpBySum(sum_loss);
     }
     double loss = sum_loss / sum_weights_;
     return std::vector<double>(1, loss);

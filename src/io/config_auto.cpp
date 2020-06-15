@@ -193,6 +193,7 @@ std::unordered_set<std::string> Config::parameter_set({
   "feature_fraction_bynode",
   "feature_fraction_seed",
   "early_stopping_round",
+  "convergence_criteria",
   "first_metric_only",
   "max_delta_step",
   "lambda_l1",
@@ -341,6 +342,8 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
   GetInt(params, "feature_fraction_seed", &feature_fraction_seed);
 
   GetInt(params, "early_stopping_round", &early_stopping_round);
+
+  GetString(params, "convergence_criteria", &convergence_criteria);
 
   GetBool(params, "first_metric_only", &first_metric_only);
 
@@ -601,6 +604,7 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[feature_fraction_bynode: " << feature_fraction_bynode << "]\n";
   str_buf << "[feature_fraction_seed: " << feature_fraction_seed << "]\n";
   str_buf << "[early_stopping_round: " << early_stopping_round << "]\n";
+  str_buf << "[convergence_criteria: " << convergence_criteria << "]\n";
   str_buf << "[first_metric_only: " << first_metric_only << "]\n";
   str_buf << "[max_delta_step: " << max_delta_step << "]\n";
   str_buf << "[lambda_l1: " << lambda_l1 << "]\n";

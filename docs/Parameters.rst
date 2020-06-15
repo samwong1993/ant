@@ -282,6 +282,12 @@ Learning Control Parameters
 
    -  ``<= 0`` means disable
 
+-  ``convergence_criteria`` :raw-html:`<a id="convergence_criteria" title="Permalink to this parameter" href="#convergence_criteria">&#x1F517;&#xFE0E;</a>`, default = ``-1``, type = string
+
+   -  will stop training if one metric of one validation data is converged
+
+   -  ``"-1"`` means disable
+
 -  ``first_metric_only`` :raw-html:`<a id="first_metric_only" title="Permalink to this parameter" href="#first_metric_only">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
 
    -  set this to ``true``, if you want to use only the first metric for early stopping

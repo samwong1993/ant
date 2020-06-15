@@ -294,6 +294,10 @@ struct Config {
   // desc = ``<= 0`` means disable
   int early_stopping_round = 0;
 
+  // desc = will stop training if one metric of one validation data is converged
+  // desc = ``"-1"`` means disable
+  std::string convergence_criteria = "-1";
+
   // desc = set this to ``true``, if you want to use only the first metric for early stopping
   bool first_metric_only = false;
 

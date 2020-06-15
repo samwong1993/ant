@@ -9,6 +9,7 @@ import ctypes
 import os
 import warnings
 from tempfile import NamedTemporaryFile
+from collections import OrderedDict
 
 import numpy as np
 import scipy.sparse
@@ -350,6 +351,30 @@ def _load_pandas_categorical(file_name=None, model_str=None):
         return None
 
 
+def global_sync_up_by_sum(v):
+    ret = ctypes.c_double()
+    _safe_call(_LIB.LGBM_NetworkGlobalSyncUpBySum(
+        ctypes.c_double(v),
+        ctypes.byref(ret)))
+    return ret.value
+
+
+def global_sync_up_by_max(v):
+    ret = ctypes.c_double()
+    _safe_call(_LIB.LGBM_NetworkGlobalSyncUpByMax(
+        ctypes.c_double(v),
+        ctypes.byref(ret)))
+    return ret.value
+
+
+def global_sync_up_by_min(v):
+    ret = ctypes.c_double()
+    _safe_call(_LIB.LGBM_NetworkGlobalSyncUpByMin(
+        ctypes.c_double(v),
+        ctypes.byref(ret)))
+    return ret.value
+
+
 class _InnerPredictor(object):
     """_InnerPredictor of LightGBM.
 
@@ -480,8 +505,8 @@ class _InnerPredictor(object):
                 preds = np.array(preds, dtype=np.float64, copy=False)
         elif isinstance(data, scipy.sparse.csr_matrix):
             preds, nrow = self.__pred_for_csr(data, num_iteration, predict_type)
-        elif isinstance(data, scipy.sparse.csc_matrix):
-            preds, nrow = self.__pred_for_csc(data, num_iteration, predict_type)
+        #lif isinstance(data, scipy.sparse.csc_matrix):
+        #   preds, nrow = self.__pred_for_csc(data, num_iteration, predict_type)
         elif isinstance(data, np.ndarray):
             preds, nrow = self.__pred_for_np2d(data, num_iteration, predict_type)
         elif isinstance(data, list):
@@ -2580,6 +2605,121 @@ class Booster(object):
                 return ret
         else:
             return hist, bin_edges
+
+    def get_leaf_path(self, tree_idx=None, gen_rule_link=False, with_score=True, missing_value=False):
+        #内部节点计数
+        def get_non_leaf_node_count(root):
+            #root:{'split_index': 0, 'split_feature': 10, 'split_gain': 15.689842224121094,
+            #'threshold': -1.0000000180025095e-35, 'decision_type': '<=', 'default_left': True, 'missing_type': 'None',
+            #'internal_value': 0, 'internal_weight': 0, 'internal_count': 1485,
+            #'left_child': }
+            if 'split_index' in root:
+                return get_non_leaf_node_count(root['left_child']) + get_non_leaf_node_count(root['right_child']) + 1
+            else:
+                return 0
+
+        def find_leaf_path(root, path):
+            """Recursively find path from root node to leaf"""
+            if 'split_index' in root:
+                split_feature = feature_names[root['split_feature']]
+                if root['decision_type'] == '==':
+                    # categorical feature
+                    conditions = []
+                    thresholds = root['threshold'].split('||')
+                    for threshold in thresholds:
+                        conditions.append('{} == {}'.format(split_feature, threshold))
+                    if missing_value and root['default_left']:
+                        # missing value go to left subtree
+                        conditions.append('{} is null'.format(split_feature))
+                    conditions_str = '({})'.format(' or '.join(conditions))
+                    path.append(conditions_str)
+                    find_leaf_path(root['left_child'], path)
+                    path.pop()
+
+                    if missing_value:
+                        if root['default_left']:
+                            conditions.pop()
+                            conditions_str = 'not({})'.format(' or '.join(conditions))
+                        else:
+                            # missing value go to right subtree
+                            conditions_str = '(not({}) or {} is null)'.format(' or '.join(conditions), split_feature)
+                    else:
+                        conditions_str = 'not({})'.format(' or '.join(conditions))
+                    path.append(conditions_str)
+                    find_leaf_path(root['right_child'], path)
+                    path.pop()
+                else:
+                    # numerical feature
+                    threshold = round(root['threshold'], 6)
+                    if missing_value and root['default_left']:
+                        # missing value go to left subtree
+                        path.append('({} <= {} or {} is null)'.format(split_feature, threshold, split_feature))
+                    else:
+                        path.append('{} <= {}'.format(split_feature, threshold))
+                    find_leaf_path(root['left_child'], path)
+                    path.pop()
+
+                    if missing_value:
+                        if root['default_left']:
+                            path.append('{} > {}'.format(split_feature, threshold))
+                        else:
+                            # missing value go to right subtree
+                            path.append('({} > {} or {} is null)'.format(split_feature, threshold, split_feature))
+                    else:
+                        path.append('{} > {}'.format(split_feature, threshold))
+                    find_leaf_path(root['right_child'], path)
+                    path.pop()
+            else:
+                leaf_id = root['leaf_index']
+                path_str = ' and '.join(path)
+                if with_score:
+                    paths[leaf_id] = 'case when {} then {}'.format(path_str, round(root['leaf_value'], 6))
+                else:
+                    paths[leaf_id] = 'case when {}'.format(path_str)
+
+        def find_rule_link(root, rule_link):
+            if 'split_index' in root:
+                rule_link.append(root['split_index'])
+                find_rule_link(root['left_child'], rule_link)
+                find_rule_link(root['right_child'], rule_link)
+                rule_link.pop()
+            else:
+                leaf_id = root['leaf_index']
+                leaf_id_in_rule_link = leaf_id + non_leaf_node_count
+                rule_link.append(leaf_id_in_rule_link)
+                rule_links[leaf_id] = '->'.join([str(id) for id in rule_link])
+                rule_link.pop()
+
+        paths_for_all_trees = []
+        rule_links_for_all_trees = []
+        model = self.dump_model()
+        feature_names = model.get('feature_names')
+        if tree_idx is None:
+            tree_idx = [i for i in range(len(model['tree_info']))]
+        if isinstance(tree_idx, int):
+            tree_idx = [tree_idx]
+
+        for idx in tree_idx:
+            idx = min(idx,len(model['tree_info']) - 1)
+            print(tree_idx)
+            print(len(model['tree_info']))
+            print(model['tree_info'])
+            tree_info = model['tree_info'][idx]
+            paths = OrderedDict()
+            find_leaf_path(tree_info['tree_structure'], [])
+            paths_for_all_trees.append(paths)
+
+        if gen_rule_link:
+            for idx in tree_idx:
+                idx = min(idx, len(model['tree_info']) - 1)
+                tree_info = model['tree_info'][idx]
+                rule_links = OrderedDict()
+                non_leaf_node_count = get_non_leaf_node_count(tree_info['tree_structure'])
+                find_rule_link(tree_info['tree_structure'], [])
+                rule_links_for_all_trees.append(rule_links)
+            return paths_for_all_trees, rule_links_for_all_trees
+        else:
+            return paths_for_all_trees
 
     def __inner_eval(self, data_name, data_idx, feval=None):
         """Evaluate training or validation data."""

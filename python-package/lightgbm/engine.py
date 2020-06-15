@@ -12,6 +12,7 @@ import numpy as np
 
 from . import callback
 from .basic import Booster, Dataset, LightGBMError, _InnerPredictor
+from .rule_engine import rule_train
 from .compat import (SKLEARN_INSTALLED, _LGBMGroupKFold, _LGBMStratifiedKFold,
                      string_type, integer_types, range_, zip_)
 
@@ -144,14 +145,25 @@ def train(params, train_set, num_boost_round=100,
     for alias in ["num_iterations", "num_iteration", "n_iter", "num_tree", "num_trees",
                   "num_round", "num_rounds", "num_boost_round", "n_estimators"]:
         if alias in params:
-            num_boost_round = params.pop(alias)
+            num_boost_round = int(params.pop(alias))
             warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
             break
     for alias in ["early_stopping_round", "early_stopping_rounds", "early_stopping", "n_iter_no_change"]:
         if alias in params:
-            early_stopping_rounds = params.pop(alias)
+            early_stopping_rounds = int(params.pop(alias))
             warnings.warn("Found `{}` in params. Will use it instead of argument".format(alias))
             break
+    for alias in ['mode']:
+        if alias in params:
+            mode = params.pop(alias)
+            if 'sequential_covering' == mode:
+                return rule_train(params, train_set, num_boost_round,
+                                  valid_sets, valid_names,
+                                  fobj, feval, init_model,
+                                  feature_name, categorical_feature,
+                                  early_stopping_rounds, evals_result,
+                                  verbose_eval, learning_rates,
+                                  keep_training_booster, callbacks)
     first_metric_only = params.pop('first_metric_only', False)
 
     if num_boost_round <= 0:
@@ -212,6 +224,23 @@ def train(params, train_set, num_boost_round=100,
     if early_stopping_rounds is not None:
         callbacks.add(callback.early_stopping(early_stopping_rounds, first_metric_only, verbose=bool(verbose_eval)))
 
+    #TODO(yin): add max_running_time_in_minutes
+    ant_early_stopping = "convergence_criteria" in params
+    if "convergence_criteria" in params:
+        cc = params["convergence_criteria"]
+        min_num_points = -1
+        n = 0
+        c = 1.0
+        if cc and cc.strip():
+            strs = cc.split(":")
+            if len(strs) > 0:
+                min_num_points = int(strs[0])
+            if len(strs) > 1:
+                n = int(strs[1])
+            if len(strs) > 2:
+                c = float(strs[2]) 
+        callbacks.add(callback.convergence_test(min_num_points, n, c, first_metric_only, verbose=bool(verbose_eval)))
+
     if learning_rates is not None:
         callbacks.add(callback.reset_parameter(learning_rate=learning_rates))
 
@@ -235,6 +264,7 @@ def train(params, train_set, num_boost_round=100,
         for valid_set in reduced_valid_sets:
             valid_set._reverse_update_params()
     booster.best_iteration = 0
+    best_iteration = booster.best_iteration
 
     # start training
     for i in range_(init_iteration, init_iteration + num_boost_round):
@@ -266,6 +296,15 @@ def train(params, train_set, num_boost_round=100,
             booster.best_iteration = earlyStopException.best_iteration + 1
             evaluation_result_list = earlyStopException.best_score
             break
+        finally:
+            if ant_early_stopping:
+                if best_iteration != earlyStopException.best_iteration:
+                    # Found a better model
+                    best_iteration = earlyStopException.best_iteration
+                    best_bst = booster.copy()
+
+    if ant_early_stopping:
+        booster = best_bst
     booster.best_score = collections.defaultdict(collections.OrderedDict)
     for dataset_name, eval_name, score, _ in evaluation_result_list:
         booster.best_score[dataset_name][eval_name] = score

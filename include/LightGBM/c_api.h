@@ -1020,6 +1020,16 @@ LIGHTGBM_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
                                                     void* reduce_scatter_ext_fun,
                                                     void* allgather_ext_fun);
 
+
+LIGHTGBM_C_EXPORT int LGBM_NetworkGlobalSyncUpBySum(double value, double* out);
+
+
+LIGHTGBM_C_EXPORT int LGBM_NetworkGlobalSyncUpByMax(double value, double* out);
+
+
+LIGHTGBM_C_EXPORT int LGBM_NetworkGlobalSyncUpByMin(double value, double* out);
+
+
 #if defined(_MSC_VER)
 #define THREAD_LOCAL __declspec(thread)  /*!< \brief Thread local specifier. */
 #else

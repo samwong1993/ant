@@ -334,3 +334,29 @@ class TestBasic(unittest.TestCase):
         lgb_data.set_weight(sequence)
         lgb_data.set_init_score(sequence)
         check_asserts(lgb_data)
+
+    def test_get_leaf_path(self):
+        X_train, X_test, y_train, y_test = train_test_split(*load_breast_cancer(True),
+                                                            test_size=0.1, random_state=2)
+        train_data = lgb.Dataset(X_train, label=y_train)
+        valid_data = train_data.create_valid(X_test, label=y_test)
+
+        params = {
+            "objective": "binary",
+            "metric": "auc",
+            "min_data": 10,
+            "num_leaves": 7,
+            "verbose": -1,
+            "num_threads": 1,
+            "max_bin": 255,
+            "num_iterations": 10
+        }
+        bst = lgb.train(params, train_data, valid_sets=valid_data)
+        paths = bst.get_leaf_path()
+
+        self.assertEqual(len(paths), 10)
+        self.assertEqual(len(paths[0]), 7)
+        self.assertEqual(paths[0][0], 'case when Column_22 <= 105.95 and Column_27 <= 0.1603 and Column_27 <= 0.1358 then 0.650742')
+        self.assertEqual(paths[0][1], 'case when Column_22 <= 105.95 and Column_27 <= 0.1603 and Column_27 > 0.1358 then 0.524454')
+        self.assertEqual(paths[0][2], 'case when Column_22 <= 105.95 and Column_27 > 0.1603 then 0.307535')
+        self.assertEqual(paths[0][3], 'case when Column_22 > 105.95 and Column_7 <= 0.04829 and Column_20 <= 16.85 then 0.6552')
