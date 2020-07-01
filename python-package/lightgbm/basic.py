@@ -2701,9 +2701,6 @@ class Booster(object):
 
         for idx in tree_idx:
             idx = min(idx,len(model['tree_info']) - 1)
-            print(tree_idx)
-            print(len(model['tree_info']))
-            print(model['tree_info'])
             tree_info = model['tree_info'][idx]
             paths = OrderedDict()
             find_leaf_path(tree_info['tree_structure'], [])
