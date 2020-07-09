@@ -173,7 +173,7 @@ def rule_train(params, train_set, num_boost_round=100,
     for i in range(len(datasets_stats)):
         datasets_stats[i][0] = global_sync_up_by_sum(datasets_stats[i][0])
         datasets_stats[i][1] = global_sync_up_by_sum(datasets_stats[i][1])
-
+    train_index = []
     rule_list = []
     # start training
     for i in range_(init_iteration, init_iteration + num_boost_round):
@@ -230,9 +230,8 @@ def rule_train(params, train_set, num_boost_round=100,
             })
 
         evaluation_result_list = []
-        train_set, size = build_new_dataset(train_set, pred_leaf_list[0], top_leaf_ids)
-        # temp_data, size_test = build_new_dataset_test(valid_sets[0], pred_leaf_list[1], top_leaf_ids)
-        # valid_sets[0].data = temp_data
+        train_set, size, index = build_new_dataset(train_set, pred_leaf_list[0], top_leaf_ids)
+        train_index.append(index)
         global_min_train_set_size = global_sync_up_by_min(size)
         if global_min_train_set_size == 0:
             logging.warning('iter {}, local dataset size {}, global min dataset size is 0, stop training!'.format(i, size))
@@ -240,15 +239,6 @@ def rule_train(params, train_set, num_boost_round=100,
         else:
             global_train_set_size = global_sync_up_by_sum(size)
             logging.warning('iter {}, remaining {} samples to train in local worker, {} samples overall.'.format(i, size, int(global_train_set_size)))
-
-
-        # global_min_test_set_size = global_sync_up_by_min(size_test)
-        # if global_min_test_set_size == 0:
-        #     logging.warning('iter {}, local dataset size {}, global min dataset size is 0, stop training!'.format(i, size_test))
-        #     break
-        # else:
-        #     global_min_test_set_size = global_sync_up_by_sum(size_test)
-        #     logging.warning('iter {}, remaining {} samples to test in local worker, {} samples overall.'.format(i, size_test, int(global_min_test_set_size)))
 
 
         # check evaluation result.
@@ -275,7 +265,7 @@ def rule_train(params, train_set, num_boost_round=100,
         booster.best_score[dataset_name][eval_name] = score
     if not keep_training_booster:
         booster.model_from_string(booster.model_to_string(), False).free_dataset()
-    return booster, rule_list
+    return booster, rule_list ,train_index
 
 
 def compute_top_n_leaf_info(pred_leaf_list, datasets_stats, labels, top_n, rule_pos_rate_threshold=None, classifier_threshold=0.5):
@@ -354,33 +344,31 @@ def compute_leaf_info(preds_leaf, labels, stats, threshold):
     return leaf_info
 def build_new_dataset(origin_dataset, pred_leaf, drop_leaf_id):
     used_indices = []
+    drop_indices = []
+    index = []
     #pred_leaf叶子节点的id不在被选出来的id里 记录i到used_indices = []
     for i in range(len(pred_leaf)):
         if pred_leaf[i] not in drop_leaf_id:
             used_indices.append(i)
+        else:
+            drop_indices.append(i)
+            index.append([i,list(drop_leaf_id).index(pred_leaf[i])])
+    # print('drop_leaf_id', drop_leaf_id)
+    # print('drop_leaf_id', list(drop_leaf_id))
+    # print('pred_leaf', pred_leaf)
+    # print('len_pred_leaf', len(pred_leaf))
+    # print('used_indices',used_indices)
+    # print('drop_indices', drop_indices)
+
     if len(used_indices) == 0:
         warnings.warn('used_indices is empty, all train data has been covered!')
-        return None, 0
+        return None, 0, index
     new_dataset = origin_dataset.subset(used_indices)
     # new_dataset.data = origin_dataset.data
     #print(used_indices)
     #print(len(used_indices))
-    return new_dataset, len(used_indices)
 
-
-# def build_new_dataset_test(origin_dataset, pred_leaf, drop_leaf_id):
-#     used_indices = []
-#     #pred_leaf叶子节点的id不在被选出来的id里 记录i到used_indices = []
-#     for i in range(len(pred_leaf)):
-#         if pred_leaf[i] not in drop_leaf_id:
-#             used_indices.append(i)
-#     if len(used_indices) == 0:
-#         warnings.warn('used_indices is empty, all test data has been covered!')
-#         return origin_dataset,0
-#     new_dataset = origin_dataset.data.iloc[used_indices,:]
-#     # new_dataset.data = origin_dataset.data
-#     #print(len(used_indices))
-#     return new_dataset, len(used_indices)
+    return new_dataset, len(used_indices),index
 
 def build_new_dataset_v2(origin_dataset, pred_leaf, drop_leaf_id):
     used_indices = []
