@@ -135,11 +135,6 @@ def rule_train(params, train_set, num_boost_round=100,
     callbacks_before_iter = sorted(callbacks_before_iter, key=attrgetter('order'))
     callbacks_after_iter = sorted(callbacks_after_iter, key=attrgetter('order'))
 
-    # original_train_set = train_set
-    # num_data = len(original_train_set.data)
-    # used_indices = [i for i in range(num_data)]
-    # train_set = original_train_set.subset(used_indices)
-
     # construct booster
     try:
         booster = Booster(params=params, train_set=train_set)
@@ -155,7 +150,6 @@ def rule_train(params, train_set, num_boost_round=100,
 
     labels = []
     labels.append(train_set.label)
-    #datasets_stats 统计数据集中label的个数
     datasets_stats = []
     train_stats = {0: 0, 1: 0}
     for y in train_set.label:
@@ -184,38 +178,22 @@ def rule_train(params, train_set, num_boost_round=100,
                                     begin_iteration=init_iteration,
                                     end_iteration=init_iteration + num_boost_round,
                                     evaluation_result_list=None))
-        #booster.update(valid_sets[0], fobj=fobj)
         booster.update(train_set, fobj=fobj)
         pred_leaf_list = []
-        #pred_leaf训练集
-        #print(train_set.get_data()) 带有参数的类似csv
         pred_leaf = booster.predict(train_set.get_data(), pred_leaf=True)
         pred_leaf_list.append(pred_leaf)
         if valid_sets:
             for valid_set in valid_sets:
-                #print(len(valid_set.get_data()))
-                #测试集
                 valid_pred_leaf = booster.predict(valid_set.get_data(), pred_leaf=True)
                 pred_leaf_list.append(valid_pred_leaf)
-        #pred_leaf_list [array([[11, 10, 10, ..., 10, 13, 8]]), array([[11, 5, 13, ..., 5, 5, 6]])]
-        #print(len(pred_leaf_list[0]))
-        #pred_leaf_list存储训练集测试集结果
         if len(pred_leaf_list[0].shape) > 1:
             for j in range(len(pred_leaf_list)):
                 pred_leaf_list[j] = pred_leaf_list[j][:, -1]
-            # pred_leaf = pred_leaf[:, -1]
-        #pred_leaf_list：array([6, 4, 3, 1, 3, 6, 1, 6, 1, 1, 6, 7, 1, 2, 0, 1, 6, 1, 5, 3, 5, 4, 6]), array([5, 5, 1, ..., 5, 0, 2])]
         select_rule_num = rule_top_n_each_tree
         if i == init_iteration + num_boost_round - 1:
             select_rule_num = -1
-        #datasets_stats[{0: 15442.0, 1: 4558.0}, {0: 7922.0, 1: 2078.0}]
         top_rules_info = compute_top_n_leaf_info(pred_leaf_list, datasets_stats, labels, select_rule_num, rule_pos_rate_threshold)
         top_leaf_ids = top_rules_info.keys()
-        #print(top_leaf_ids)
-        #odict_keys([1, 4, 0, 2, 6, 5, 3, 7])
-        #top_rules_info
-        #trainset:OrderedDict([(1, [{0: 130, 1: 32, 'recall': 0.007020623080298377, 'precision': 0.19753086419753085,'accuracy': 0.19753086419753085, 'pred': 1, 'score': 0.19753086419753085, 'pos_count': 32.0,'neg_count': 130.0},
-        #testset:{0: 1414, 1: 492, 'recall': 0.23676612127045235, 'precision': 0.25813221406086045,'accuracy': 0.25813221406086045, 'pred': 1, 'score': 0.25813221406086045, 'pos_count': 492.0,'neg_count': 1414.0}])])
         paths, rule_links = booster.get_leaf_path(i, gen_rule_link=True, with_score=False, missing_value=True)
         paths = paths[0]
         rule_links = rule_links[0]
@@ -270,22 +248,16 @@ def rule_train(params, train_set, num_boost_round=100,
 
 def compute_top_n_leaf_info(pred_leaf_list, datasets_stats, labels, top_n, rule_pos_rate_threshold=None, classifier_threshold=0.5):
     leaf_info = {}
-    #print(len(pred_leaf_list))
     for i in range(len(pred_leaf_list)):
-        #print(datasets_stats[i])
         leaf_info_temp = compute_leaf_info(pred_leaf_list[i], labels[i], datasets_stats[i], classifier_threshold)
         for id in leaf_info_temp:
             if id not in leaf_info:
                 leaf_info[id] = []
             leaf_info[id].append(leaf_info_temp[id])
-    #leaf_info[6] = (6:{训练{0:xx 1:xx}/测试})
-    # leaf_info = compute_leaf_info(preds_leaf, labels)
     top_rules = OrderedDict()
     eval_data_idx = 0
     if len(pred_leaf_list) >= 2:
         eval_data_idx = 1
-    #top_rules从leaf_info里取值
-    #print(eval_data_idx) = 1
     if rule_pos_rate_threshold and top_n >= 0:
         for item in leaf_info.items():
             if item[1][eval_data_idx]['precision'] >= rule_pos_rate_threshold:
@@ -294,14 +266,11 @@ def compute_top_n_leaf_info(pred_leaf_list, datasets_stats, labels, top_n, rule_
         if top_n is None or top_n < 0:
             top_n = len(leaf_info)
         leaf_info_list = sorted(leaf_info.items(), key=lambda item: item[1][eval_data_idx]['precision'], reverse=True)
-        #print(len(leaf_info_list))
         for i in range(min(top_n,len(leaf_info_list))):
             top_rules[leaf_info_list[i][0]] = leaf_info_list[i][1]
     logging.warning('select {} rules this round.'.format(len(top_rules)))
     for rule_id in top_rules:
-        #rule_id 1 4 0 2 6 5 3 7
         for item in top_rules[rule_id]:
-            #输出
             logging.warning('rule_id: {}, prec: {}, recall: {}, pos_count: {}, neg_count: {}'.format(
                 rule_id, item['precision'], item['recall'], item['pos_count'], item['neg_count']
             ))
@@ -311,19 +280,14 @@ def compute_top_n_leaf_info(pred_leaf_list, datasets_stats, labels, top_n, rule_
 
 def compute_leaf_info(preds_leaf, labels, stats, threshold):
     leaf_info = {}
-    #preds_leaf [6 4 3 1 3 6 1 6 1 1]
-    #labels [ 1.  1.  0. ...,  0.  0.  0.]
     for i in range(len(preds_leaf)):
         leaf_id = preds_leaf[i]
-        #leaf_id不在info里 初始化 否则统计 leaf_id下正负样本数目 例如树6下正负样本个数(6:[{0:xx 1:xx}])
         if leaf_id not in leaf_info:
             leaf_info[leaf_id] = {0: 0, 1: 0}
         leaf_info[leaf_id][labels[i]] += 1
-    #出现过的leaf信息
     for leaf_id in leaf_info:
         global_count_0 = global_sync_up_by_sum(leaf_info[leaf_id][0])
         global_count_1 = global_sync_up_by_sum(leaf_info[leaf_id][1])
-        #global_count_0数字
         positive_rate = float(global_count_1) / (global_count_1 + global_count_0)
         if positive_rate >= threshold:
             global_leaf_pred_class = 0
@@ -331,7 +295,6 @@ def compute_leaf_info(preds_leaf, labels, stats, threshold):
             global_leaf_pred_class = 1
         global_accuracy = float(global_count_0) / (global_count_1 + global_count_0) if global_leaf_pred_class == 0 \
             else float(global_count_1) / (global_count_1 + global_count_0)
-        #正负样例在此输出
         leaf_info[leaf_id]['recall'] = float(global_count_1) / stats[1]
         leaf_info[leaf_id]['precision'] = positive_rate
         leaf_info[leaf_id]['accuracy'] = global_accuracy
@@ -346,28 +309,16 @@ def build_new_dataset(origin_dataset, pred_leaf, drop_leaf_id):
     used_indices = []
     drop_indices = []
     index = []
-    #pred_leaf叶子节点的id不在被选出来的id里 记录i到used_indices = []
     for i in range(len(pred_leaf)):
         if pred_leaf[i] not in drop_leaf_id:
             used_indices.append(i)
         else:
             drop_indices.append(i)
             index.append([i,list(drop_leaf_id).index(pred_leaf[i])])
-    # print('drop_leaf_id', drop_leaf_id)
-    # print('drop_leaf_id', list(drop_leaf_id))
-    # print('pred_leaf', pred_leaf)
-    # print('len_pred_leaf', len(pred_leaf))
-    # print('used_indices',used_indices)
-    # print('drop_indices', drop_indices)
-
     if len(used_indices) == 0:
         warnings.warn('used_indices is empty, all train data has been covered!')
         return None, 0, index
     new_dataset = origin_dataset.subset(used_indices)
-    # new_dataset.data = origin_dataset.data
-    #print(used_indices)
-    #print(len(used_indices))
-
     return new_dataset, len(used_indices),index
 
 def build_new_dataset_v2(origin_dataset, pred_leaf, drop_leaf_id):
